@@ -1,0 +1,7 @@
+db.createIndex({"server": 1})
+{
+    "server": server.id,
+    "messages": str[],
+    "destination": channel.id,
+    "enabled": bool
+}
