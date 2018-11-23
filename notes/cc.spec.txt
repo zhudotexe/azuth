@@ -1,0 +1,10 @@
+db.custcommands.createIndex({"server": 1})
+{
+    "server": server.id,
+    "commands": [
+        {
+            "name": name.lower().strip(),
+            "responses": str[]
+        }
+    ]
+}

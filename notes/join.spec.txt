@@ -1,4 +1,4 @@
-db.createIndex({"server": 1})
+db.join.createIndex({"server": 1})
 {
     "server": server.id,
     "messages": str[],
