@@ -73,16 +73,16 @@ class Moderation:
         if method not in ("kick", "ban", "lockdown"):
             return await self.bot.say("Raidmode method must be kick, ban, or lockdown.")
 
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['raidmode'])
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['raidmode', 'locked_channels'])
 
         if server_settings['raidmode']:
             if server_settings['raidmode'] == 'lockdown':
-                await self.end_lockdown(ctx)
+                await self.end_lockdown(ctx, server_settings)
             server_settings['raidmode'] = None
             out = "Raid mode disabled."
         else:
             if method == 'lockdown':
-                await self.start_lockdown(ctx)
+                await self.start_lockdown(ctx, server_settings)
             server_settings['raidmode'] = method
             out = f"Raid mode enabled. Method: {method}"
 
@@ -224,11 +224,32 @@ class Moderation:
         if not no_msg:
             await self.bot.say(':ok_hand:')
 
-    def start_lockdown(self, ctx):
-        pass
+    async def start_lockdown(self, ctx, server_settings):
+        """Disables Send Messages permission for everyone in every channel."""
+        server_settings['locked_channels'] = []
+        everyone_role = ctx.message.server.default_role
+        for channel in ctx.message.server.channels:
+            if not channel.type == discord.ChannelType.text:
+                continue
+            overwrites = channel.overwrites_for(everyone_role)
+            if overwrites.send_messages is not False:  # is not false, since it could be None
+                overwrites.send_messages = False
+                server_settings['locked_channels'].append(channel.id)
+                await self.bot.edit_channel_permissions(channel, everyone_role, overwrite=overwrites)
 
-    def end_lockdown(self, ctx):
-        pass
+        await self.bot.say(f"Locked down {len(server_settings['locked_channels'])} channels.")
+
+    async def end_lockdown(self, ctx, server_settings):
+        """Reenables Send Messages for everyone in locked-down channels."""
+        everyone_role = ctx.message.server.default_role
+        for chan in server_settings['locked_channels']:
+            channel = discord.utils.get(ctx.message.server.channels, id=chan)
+            overwrites = channel.overwrites_for(everyone_role)
+            overwrites.send_messages = None
+            await self.bot.edit_channel_permissions(channel, everyone_role, overwrite=overwrites)
+
+        await self.bot.say(f"Unlocked {len(server_settings['locked_channels'])} channels.")
+        server_settings['locked_channels'] = []
 
     async def check_raidmode(self, server_settings, member):
         """Checks whether a newly-joined member should be removed due to raidmode."""
@@ -340,7 +361,7 @@ class Moderation:
                             reason="Unknown reason")
         else:
             return
-        
+
         await self.post_action(before.server, server_settings, case)
 
     async def get_server_settings(self, server_id, projection=None):

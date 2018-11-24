@@ -4,7 +4,8 @@ db.mod.createIndex({"server": 1})
     "raidmode": None | "kick" | "ban" | "lockdown",
     "cases": Case[],
     "casenum": int,
-    "forcebanned": user.id[]
+    "forcebanned": user.id[],
+    "locked_channels": channel.id[]
 }
 
 Case:
