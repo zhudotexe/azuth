@@ -1,4 +1,5 @@
 import discord
+from discord import Forbidden
 from discord.ext import commands
 from discord.http import Route
 
@@ -10,6 +11,7 @@ MUTED_ROLE = "316134780976758786"
 class Moderation:
     def __init__(self, bot):
         self.bot = bot
+        self.no_ban_logs = set()
 
     @commands.command(hidden=True, pass_context=True, no_pm=True)
     @checks.mod_or_permissions(manage_messages=True)
@@ -76,6 +78,120 @@ class Moderation:
 
         await self.set_server_settings(ctx.message.server.id, server_settings)
         await self.bot.say(out)
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(manage_roles=True)
+    async def mute(self, ctx, target: discord.Member):
+        """Mutes a member."""
+        pass
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(manage_roles=True)
+    async def unmute(self, ctx, target: discord.Member):
+        """Unmutes a member."""
+        pass
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(kick_members=True)
+    async def kick(self, ctx, user: discord.Member, *, reason='Unknown reason'):
+        """Kicks a member and logs it to #mod-log."""
+        try:
+            await self.bot.kick(user)
+        except Forbidden:
+            return await self.bot.say('Error: The bot does not have `kick_members` permission.')
+
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+
+        case = Case.new(num=server_settings['casenum'], type_='kick', user=user.id, username=str(user), reason=reason,
+                        mod=str(ctx.message.author))
+        await self.post_action(ctx, server_settings, case)
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(ban_members=True)
+    async def ban(self, ctx, user: discord.Member, *, reason='Unknown reason'):
+        """Bans a member and logs it to #mod-log."""
+        try:
+            self.no_ban_logs.add(ctx.message.server.id)
+            await self.bot.ban(user)
+        except Forbidden:
+            return await self.bot.say('Error: The bot does not have `ban_members` permission.')
+        finally:
+            self.no_ban_logs.remove(ctx.message.server.id)
+
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+
+        case = Case.new(num=server_settings['casenum'], type_='ban', user=user.id, username=str(user), reason=reason,
+                        mod=str(ctx.message.author))
+        await self.post_action(ctx, server_settings, case)
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(ban_members=True)
+    async def forceban(self, ctx, user, *, reason='Unknown reason'):
+        """Force-bans a member ID and logs it to #mod-log."""
+        member = discord.utils.get(ctx.message.server.members, id=user)
+        if member:  # if they're still in the server, normal ban them
+            return await ctx.invoke(self.ban, member, reason=reason)
+
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum', 'forcebanned'])
+        server_settings['forcebanned'].append(user)
+
+        case = Case.new(num=server_settings['casenum'], type_='forceban', user=user.id, username=str(user),
+                        reason=reason, mod=str(ctx.message.author))
+        await self.post_action(ctx, server_settings, case)
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(ban_members=True)
+    async def softban(self, ctx, user: discord.Member, *, reason='Unknown reason'):
+        """Softbans a member and logs it to #mod-log."""
+        try:
+            self.no_ban_logs.add(ctx.message.server.id)
+            await self.bot.ban(user)
+            await self.bot.unban(ctx.message.server, user)
+        except Forbidden:
+            return await self.bot.say('Error: The bot does not have `ban_members` permission.')
+        finally:
+            self.no_ban_logs.remove(ctx.message.server.id)
+
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+
+        case = Case.new(num=server_settings['casenum'], type_='softban', user=user.id, username=str(user),
+                        reason=reason, mod=str(ctx.message.author))
+        await self.post_action(ctx, server_settings, case)
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(kick_members=True)
+    async def reason(self, ctx, case_num: int, *, reason):
+        """Sets the reason for a post in mod-log."""
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases'])
+        cases = server_settings['cases']
+        case = next((c for c in cases if c['num'] == case_num), None)
+        if case is None:
+            return await self.bot.say(f"Case {case_num} not found.")
+
+        case = Case.from_dict(case)
+        case.reason = reason
+        case.mod = str(ctx.message.author)
+
+        mod_log = discord.utils.get(ctx.message.server.channels, name='mod-log')
+        if mod_log is not None and case.log_msg:
+            log_message = await self.bot.get_message(mod_log, case.log_msg)
+            await self.bot.edit_message(log_message, str(case))
+
+        await self.set_server_settings(ctx.message.server.id, server_settings)
+        await self.bot.say(':ok_hand:')
+
+    async def post_action(self, ctx, server_settings, case):
+        """Common function after a moderative action."""
+        server_settings['casenum'] += 1
+        mod_log = discord.utils.get(ctx.message.server.channels, name='mod-log')
+
+        if mod_log is not None:
+            msg = await self.bot.send_message(mod_log, str(case))
+            case.log_msg = msg.id
+
+        server_settings['cases'].append(case.to_dict())
+        await self.set_server_settings(ctx.message.server.id, server_settings)
+        await self.bot.say(':ok_hand:')
 
     def start_lockdown(self, ctx):
         pass
@@ -151,6 +267,46 @@ def get_default_settings(server):
     return {
         "server": server
     }
+
+
+class Case:
+    def __init__(self, num, type_, user, reason, mod=None, log_msg=None, username=None):
+        self.num = num
+        self.type = type_
+        self.user = user
+        self.username = username
+        self.reason = reason
+        self.mod = mod
+        self.log_msg = log_msg
+
+    @classmethod
+    def new(cls, num, type_, user, reason, mod=None, username=None):
+        return cls(num, type_, user, reason, mod=mod, username=username)
+
+    @classmethod
+    def from_dict(cls, raw):
+        raw['type_'] = raw.pop('type')
+        return cls(**raw)
+
+    def to_dict(self):
+        return {"num": self.num, "type": self.type, "user": self.user, "reason": self.reason, "mod": self.mod,
+                "log_msg": self.log_msg, "username": self.username}
+
+    def __str__(self):
+        if self.username:
+            user = f"{self.username} ({self.user})"
+        else:
+            user = self.user
+
+        if self.mod:
+            modstr = self.mod
+        else:
+            modstr = f"Responsible moderator, do `.reason {self.num} <reason>`"
+
+        return f'**{self.type.title()}** | Case {self.num}\n' \
+               f'**User**: {user}\n' \
+               f'**Reason**: {self.reason}\n' \
+               f'**Responsible Mod**: {modstr}'
 
 
 def setup(bot):

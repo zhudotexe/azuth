@@ -2,5 +2,18 @@ db.mod.createIndex({"server": 1})
 {
     "server": server.id,
     "raidmode": "kick" | "ban" | "lockdown",
-    ""
+    "cases": Case[],
+    "casenum": int,
+    "forcebanned": id[]
+}
+
+Case:
+{
+    "num": int,
+    "type": str,
+    "user": user.id,
+    "reason": str,
+    "mod": str,
+    "log_msg": message.id,
+    "username": str
 }
