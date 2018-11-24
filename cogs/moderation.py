@@ -31,6 +31,16 @@ class Moderation:
         deleted = await self.bot.purge_from(ctx.message.channel, check=lambda m: m.author.bot, limit=limit)
         await self.bot.say("Cleaned {} messages.".format(len(deleted)))
 
+    @commands.command(pass_context=True)
+    @checks.mod_or_permissions(manage_messages=True)
+    async def purge(self, ctx, num: int):
+        """Purges messages from the channel.
+        Requires: Bot Mod or Manage Messages"""
+        try:
+            await self.bot.purge_from(ctx.message.channel, limit=(num + 1))
+        except Exception as e:
+            await self.bot.say('Failed to purge: ' + str(e))
+
     @commands.command(hidden=True, pass_context=True, no_pm=True)
     @checks.mod_or_permissions(manage_roles=True)
     async def copyperms(self, ctx, role: discord.Role, source: discord.Channel, overwrite: bool = False):
@@ -81,15 +91,33 @@ class Moderation:
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(manage_roles=True)
-    async def mute(self, ctx, target: discord.Member):
-        """Mutes a member."""
-        pass
+    async def mute(self, ctx, target: discord.Member, *, reason="Unknown reason"):
+        """Toggles mute on a member."""
+        role = discord.utils.get(ctx.message.server.roles, id=MUTED_ROLE)
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
 
-    @commands.command(hidden=True, pass_context=True)
-    @checks.mod_or_permissions(manage_roles=True)
-    async def unmute(self, ctx, target: discord.Member):
-        """Unmutes a member."""
-        pass
+        if role in target.roles:
+            try:
+                self.no_ban_logs.add(ctx.message.server.id)
+                await self.bot.remove_roles(target, role)
+            except Forbidden:
+                return await self.bot.say("Error: The bot does not have `manage_roles` permission.")
+            finally:
+                self.no_ban_logs.remove(ctx.message.server.id)
+            case = Case.new(num=server_settings['casenum'], type_='unmute', user=target.id, username=str(target),
+                            reason=reason, mod=str(ctx.message.author))
+        else:
+            try:
+                self.no_ban_logs.add(ctx.message.server.id)
+                await self.bot.add_roles(target, role)
+            except Forbidden:
+                return await self.bot.say("Error: The bot does not have `manage_roles` permission.")
+            finally:
+                self.no_ban_logs.remove(ctx.message.server.id)
+            case = Case.new(num=server_settings['casenum'], type_='mute', user=target.id, username=str(target),
+                            reason=reason, mod=str(ctx.message.author))
+
+        await self.post_action(ctx.message.server, server_settings, case)
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(kick_members=True)
@@ -283,13 +311,37 @@ class Moderation:
     async def on_member_ban(self, member):
         if member.server.id in self.no_ban_logs:
             return
+        server_settings = await self.get_server_settings(member.server.id, ['cases', 'casenum'])
+
+        case = Case.new(num=server_settings['casenum'], type_='ban', user=member.id, username=str(member),
+                        reason="Unknown reason")
+        await self.post_action(member.server, server_settings, case)
 
     async def on_member_unban(self, server, user):
         if server.id in self.no_ban_logs:
             return
+        server_settings = await self.get_server_settings(server.id, ['cases', 'casenum'])
+
+        case = Case.new(num=server_settings['casenum'], type_='unban', user=user.id, username=str(user),
+                        reason="Unknown reason")
+        await self.post_action(server, server_settings, case)
 
     async def on_member_update(self, before, after):
-        pass
+        if before.server.id in self.no_ban_logs:
+            return
+        role = discord.utils.get(before.server.roles, id=MUTED_ROLE)
+        if role not in before.roles and role in after.roles:  # just muted
+            server_settings = await self.get_server_settings(before.server.id, ['cases', 'casenum'])
+            case = Case.new(num=server_settings['casenum'], type_='mute', user=after.id, username=str(after),
+                            reason="Unknown reason")
+        elif role in before.roles and role not in after.roles:  # just unmuted
+            server_settings = await self.get_server_settings(before.server.id, ['cases', 'casenum'])
+            case = Case.new(num=server_settings['casenum'], type_='unmute', user=after.id, username=str(after),
+                            reason="Unknown reason")
+        else:
+            return
+        
+        await self.post_action(before.server, server_settings, case)
 
     async def get_server_settings(self, server_id, projection=None):
         server_settings = await self.bot.mdb.mod.find_one({"server": server_id}, projection)
