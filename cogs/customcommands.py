@@ -1,3 +1,5 @@
+import random
+
 import discord
 from discord.ext import commands
 
@@ -9,7 +11,18 @@ class CustomCommands:
         self.bot = bot
         self._cache = {}
 
-    @commands.group(pass_context=True)
+    async def on_message(self, message):
+        if (not message.server) or message.author.bot:
+            return
+        server_commands = await self.get_server_commands(message.server.id)
+        cmds = server_commands['commands']
+
+        match = next((c for c in cmds if c['name'] == message.content.lower().strip()), None)
+        if match:
+            response = random.choice(match['responses'])
+            await self.bot.say(response)
+
+    @commands.group(pass_context=True, no_pm=True)
     async def cc(self, ctx):
         """Commands to manage custom commands."""
         if ctx.invoked_subcommand is None:
@@ -68,12 +81,15 @@ class CustomCommands:
             if response is None:
                 return await self.bot.say("No matching response found.")
             command['responses'].remove(response)
-            await self.set_server_commands(ctx.message.server.id, server_commands)
-            await self.bot.say(f"Removed response ```\n{response}\n```.")
+            out = f"Removed response ```\n{response}\n```."
+            if not command['responses']:
+                server_commands['commands'].remove(command)
+                out += f"\nRemoved command, as there were no responses."
         else:
             server_commands['commands'].remove(command)
-            await self.set_server_commands(ctx.message.server.id, server_commands)
-            await self.bot.say(f"Removed command {command['name']} and all responses.")
+            out = f"Removed command {command['name']} and all responses."
+        await self.set_server_commands(ctx.message.server.id, server_commands)
+        await self.bot.say(out)
 
     async def get_server_commands(self, server_id):
         if server_id in self._cache:
