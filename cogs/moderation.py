@@ -104,7 +104,7 @@ class Moderation:
 
         case = Case.new(num=server_settings['casenum'], type_='kick', user=user.id, username=str(user), reason=reason,
                         mod=str(ctx.message.author))
-        await self.post_action(ctx, server_settings, case)
+        await self.post_action(ctx.message.server, server_settings, case)
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(ban_members=True)
@@ -122,7 +122,7 @@ class Moderation:
 
         case = Case.new(num=server_settings['casenum'], type_='ban', user=user.id, username=str(user), reason=reason,
                         mod=str(ctx.message.author))
-        await self.post_action(ctx, server_settings, case)
+        await self.post_action(ctx.message.server, server_settings, case)
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(ban_members=True)
@@ -132,12 +132,14 @@ class Moderation:
         if member:  # if they're still in the server, normal ban them
             return await ctx.invoke(self.ban, member, reason=reason)
 
+        user_obj = await self.bot.get_user_info(user)
+
         server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum', 'forcebanned'])
         server_settings['forcebanned'].append(user)
 
-        case = Case.new(num=server_settings['casenum'], type_='forceban', user=user.id, username=str(user),
+        case = Case.new(num=server_settings['casenum'], type_='forceban', user=user, username=str(user_obj),
                         reason=reason, mod=str(ctx.message.author))
-        await self.post_action(ctx, server_settings, case)
+        await self.post_action(ctx.message.server, server_settings, case)
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(ban_members=True)
@@ -156,7 +158,7 @@ class Moderation:
 
         case = Case.new(num=server_settings['casenum'], type_='softban', user=user.id, username=str(user),
                         reason=reason, mod=str(ctx.message.author))
-        await self.post_action(ctx, server_settings, case)
+        await self.post_action(ctx.message.server, server_settings, case)
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(kick_members=True)
@@ -180,24 +182,59 @@ class Moderation:
         await self.set_server_settings(ctx.message.server.id, server_settings)
         await self.bot.say(':ok_hand:')
 
-    async def post_action(self, ctx, server_settings, case):
+    async def post_action(self, server, server_settings, case, no_msg=False):
         """Common function after a moderative action."""
         server_settings['casenum'] += 1
-        mod_log = discord.utils.get(ctx.message.server.channels, name='mod-log')
+        mod_log = discord.utils.get(server.channels, name='mod-log')
 
         if mod_log is not None:
             msg = await self.bot.send_message(mod_log, str(case))
             case.log_msg = msg.id
 
         server_settings['cases'].append(case.to_dict())
-        await self.set_server_settings(ctx.message.server.id, server_settings)
-        await self.bot.say(':ok_hand:')
+        await self.set_server_settings(server.id, server_settings)
+        if not no_msg:
+            await self.bot.say(':ok_hand:')
 
     def start_lockdown(self, ctx):
         pass
 
     def end_lockdown(self, ctx):
         pass
+
+    async def check_raidmode(self, server_settings, member):
+        """Checks whether a newly-joined member should be removed due to raidmode."""
+        try:
+            self.no_ban_logs.add(member.server.id)
+            if not server_settings['raidmode']:
+                return
+            elif server_settings['raidmode'] == 'kick':
+                await self.bot.kick(member)
+                action = 'kick'
+            else:
+                await self.bot.ban(member)
+                action = 'ban'
+        except Forbidden:
+            return
+        finally:
+            self.no_ban_logs.remove(member.server.id)
+        case = Case.new(num=server_settings['casenum'], type_=action, user=member.id, username=str(member),
+                        reason=f"Raidmode auto{action}", mod=str(self.bot.user))
+        await self.post_action(member.server, server_settings, case, no_msg=True)
+
+    async def check_forceban(self, server_settings, member):
+        """Checks whether a newly-joined member should be removed due to forceban."""
+        if member.id in server_settings['forcebanned']:
+            try:
+                self.no_ban_logs.add(member.server.id)
+                await self.bot.ban(member)
+            except Forbidden:
+                return
+            finally:
+                self.no_ban_logs.remove(member.server.id)
+            case = Case.new(num=server_settings['casenum'], type_='ban', user=member.id, username=str(member),
+                            reason="User forcebanned previously", mod=str(self.bot.user))
+            await self.post_action(member.server, server_settings, case, no_msg=True)
 
     async def on_message_delete(self, message):
         if not message.server:
@@ -239,13 +276,17 @@ class Moderation:
         await self.bot.send_message(msg_log, embed=embed)
 
     async def on_member_join(self, member):
-        pass
+        server_settings = await self.get_server_settings(member.server.id)
+        await self.check_raidmode(server_settings, member)
+        await self.check_forceban(server_settings, member)
 
     async def on_member_ban(self, member):
-        pass
+        if member.server.id in self.no_ban_logs:
+            return
 
     async def on_member_unban(self, server, user):
-        pass
+        if server.id in self.no_ban_logs:
+            return
 
     async def on_member_update(self, before, after):
         pass
