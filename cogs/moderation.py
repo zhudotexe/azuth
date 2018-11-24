@@ -15,12 +15,14 @@ class Moderation:
 
     @commands.command(hidden=True, pass_context=True, no_pm=True)
     @checks.mod_or_permissions(manage_messages=True)
-    async def slowmode(self, ctx, timeout: int = 10):
+    async def slowmode(self, ctx, timeout: int = 10, channel: discord.Channel = None):
         """Slows a channel."""
+        if channel is None:
+            channel = ctx.message.channel
         try:
-            await self.bot.http.request(Route('PATCH', '/channels/{channel_id}', channel_id=ctx.message.channel.id),
+            await self.bot.http.request(Route('PATCH', '/channels/{channel_id}', channel_id=channel.id),
                                         json={"rate_limit_per_user": timeout})
-            await self.bot.say(f"Ratelimit set to {timeout} seconds.")
+            await self.bot.say(f"Ratelimit set to {timeout} seconds in {channel}.")
         except:
             await self.bot.say("Failed to set ratelimit.")
 
@@ -379,7 +381,12 @@ class Moderation:
 
 def get_default_settings(server):
     return {
-        "server": server
+        "server": server,
+        "raidmode": None,
+        "cases": [],
+        "casenum": 1,
+        "forcebanned": [],
+        "locked_channels": []
     }
 
 
