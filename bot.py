@@ -9,7 +9,8 @@ MONGO_URI = os.environ.get("MONGO", "mongodb://localhost:27017")
 COGS = (
     "cogs.customcommands",
     "cogs.joinannouncer",
-    "cogs.moderation"
+    "cogs.moderation",
+    "cogs.owner"
 )
 
 

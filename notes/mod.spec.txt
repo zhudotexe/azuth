@@ -1,0 +1,6 @@
+db.mod.createIndex({"server": 1})
+{
+    "server": server.id,
+    "raidmode": "kick" | "ban" | "lockdown",
+    ""
+}

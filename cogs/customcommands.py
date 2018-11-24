@@ -19,8 +19,11 @@ class CustomCommands:
 
         match = next((c for c in cmds if c['name'] == message.content.lower().strip()), None)
         if match:
-            response = random.choice(match['responses'])
-            await self.bot.say(response)
+            try:
+                response = random.choice(match['responses'])
+                await self.bot.say(response)
+            except:
+                pass
 
     @commands.group(pass_context=True, no_pm=True)
     async def cc(self, ctx):
