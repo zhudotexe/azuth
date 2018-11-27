@@ -1,4 +1,5 @@
 import os
+import sys
 
 import discord
 import motor.motor_asyncio
@@ -10,7 +11,8 @@ COGS = (
     "cogs.customcommands",
     "cogs.joinannouncer",
     "cogs.moderation",
-    "cogs.owner"
+    "cogs.owner",
+    "cogs.roles"
 )
 
 
@@ -19,6 +21,7 @@ class Azuth(Bot):
         super(Azuth, self).__init__(*args, **kwargs)
         self.mclient = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
         self.mdb = self.mclient.azuth
+        self.testing = 'test' in sys.argv
 
 
 bot = Azuth(".")
