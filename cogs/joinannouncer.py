@@ -1,3 +1,4 @@
+import asyncio
 import random
 
 import discord
@@ -17,13 +18,20 @@ class JoinAnnouncer:
             return
         destination = member.server.get_channel(server_settings['destination'])
         messages = server_settings['messages']
+        deleteafter = server_settings['deleteafter']
         if messages:
             message = random.choice(messages).replace('@', member.mention)
         else:
             message = "Welcome to the server " + member.mention + "!"
 
         if destination:
-            await self.bot.send_message(destination, message)
+            msg = await self.bot.send_message(destination, message)
+            if deleteafter:
+                await asyncio.sleep(deleteafter)
+                try:
+                    await self.bot.delete_message(msg)
+                except:
+                    pass
 
     @commands.group(pass_context=True, no_pm=True)
     @checks.mod_or_permissions(manage_server=True)
@@ -53,6 +61,20 @@ class JoinAnnouncer:
         server_settings['destination'] = chan.id
         await self.set_server_settings(ctx.message.server.id, server_settings)
         await self.bot.say("Server join announcement channel set to {}.".format(chan))
+
+    @ja.command(pass_context=True)
+    @checks.mod_or_permissions(manage_server=True)
+    async def deleteafter(self, ctx, seconds: int):
+        """Sets how long join messages should persist before being deleted. 0 for no deletion."""
+        if seconds < 0:
+            return await self.bot.say("Seconds must be at least 0.")
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['deleteafter'])
+        server_settings['deleteafter'] = seconds
+        await self.set_server_settings(ctx.message.server.id, server_settings)
+        if seconds:
+            await self.bot.say(f"OK, will delete join messages after {seconds} seconds.")
+        else:
+            await self.bot.say("OK, will not delete join messages.")
 
     @ja.group(pass_context=True)
     @checks.mod_or_permissions(manage_server=True)
@@ -114,7 +136,8 @@ def get_default_settings(server):
         "server": server,
         "messages": [],
         "destination": None,
-        "enabled": False
+        "enabled": False,
+        "deleteafter": 0
     }
 
 

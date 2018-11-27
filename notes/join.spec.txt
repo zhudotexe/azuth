@@ -3,5 +3,6 @@ db.join.createIndex({"server": 1})
     "server": server.id,
     "messages": str[],
     "destination": channel.id,
-    "enabled": bool
+    "enabled": bool,
+    "deleteafter": int
 }
