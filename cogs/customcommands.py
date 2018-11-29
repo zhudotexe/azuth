@@ -103,7 +103,7 @@ class CustomCommands:
         return server_commands
 
     async def set_server_commands(self, server_id, cmds):
-        await self.bot.mdb.custcommands.replace_one(
+        await self.bot.mdb.custcommands.update_one(
             {"server": server_id},
             {"$set": cmds}, upsert=True
         )
