@@ -21,7 +21,7 @@ class CustomCommands:
         if match:
             try:
                 response = random.choice(match['responses'])
-                await self.bot.say(response)
+                await self.bot.send_message(message.channel, response)
             except:
                 pass
 

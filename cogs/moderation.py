@@ -5,7 +5,7 @@ from discord.http import Route
 
 from utils import checks
 
-MUTED_ROLE = "316134780976758786"
+MUTED_ROLE = "517795608677842945"
 
 
 class Moderation:
@@ -338,7 +338,7 @@ class Moderation:
 
         case = Case.new(num=server_settings['casenum'], type_='ban', user=member.id, username=str(member),
                         reason="Unknown reason")
-        await self.post_action(member.server, server_settings, case)
+        await self.post_action(member.server, server_settings, case, no_msg=True)
 
     async def on_member_unban(self, server, user):
         if server.id in self.no_ban_logs:
@@ -347,7 +347,7 @@ class Moderation:
 
         case = Case.new(num=server_settings['casenum'], type_='unban', user=user.id, username=str(user),
                         reason="Unknown reason")
-        await self.post_action(server, server_settings, case)
+        await self.post_action(server, server_settings, case, no_msg=True)
 
     async def on_member_update(self, before, after):
         if before.server.id in self.no_ban_logs:
@@ -364,7 +364,7 @@ class Moderation:
         else:
             return
 
-        await self.post_action(before.server, server_settings, case)
+        await self.post_action(before.server, server_settings, case, no_msg=True)
 
     async def get_server_settings(self, server_id, projection=None):
         server_settings = await self.bot.mdb.mod.find_one({"server": server_id}, projection)

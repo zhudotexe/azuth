@@ -33,6 +33,11 @@ async def on_ready():
     await bot.change_presence(game=discord.Game(name='on Discord & Dragons'))
 
 
+@bot.event
+async def on_message(message):
+    await bot.process_commands(message)
+
+
 for cog in COGS:
     bot.load_extension(cog)
 
