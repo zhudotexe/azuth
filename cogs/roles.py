@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import json
 
 import discord
 from discord import Emoji
@@ -34,6 +35,9 @@ class Roles:
             pass
 
     async def on_socket_raw_receive(self, msg):
+        if isinstance(msg, bytes):
+            return
+        msg = json.loads(msg)
         if msg.get('t') != "MESSAGE_REACTION_ADD":
             return
 
