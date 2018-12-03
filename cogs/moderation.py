@@ -5,7 +5,7 @@ from discord.http import Route
 
 from utils import checks
 
-MUTED_ROLE = "517795608677842945"
+MUTED_ROLE = "316134780976758786"
 
 
 class Moderation:
