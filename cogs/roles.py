@@ -60,6 +60,7 @@ class Roles:
         else:
             if str(emoji) in self.reaction_map:
                 role = discord.utils.get(server.roles, name=self.reaction_map[str(emoji)])
+                print(f"Handling role change: {role.name} on {member}")
                 if role in member.roles:
                     await self.bot.remove_roles(member, role)
                     out = "I have removed the {} role.".format(role.name)
