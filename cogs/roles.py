@@ -71,7 +71,8 @@ class Roles:
                     await self.bot.send_message(member, out)
                 except:
                     pass
-            await self.bot.http.remove_reaction(msg_id, chan_id, emoji, member.id)
+            else:
+                await self.bot.http.remove_reaction(msg_id, chan_id, emoji, member.id)
 
     def get_emoji(self, **data):
         id_ = data['id']
