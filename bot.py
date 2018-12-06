@@ -1,9 +1,10 @@
 import os
 import sys
+import traceback
 
 import discord
 import motor.motor_asyncio
-from discord.ext.commands import Bot
+from discord.ext.commands import Bot, CommandNotFound
 
 TOKEN = os.environ.get("TOKEN")
 MONGO_URI = os.environ.get("MONGO", "mongodb://localhost:27017")
@@ -36,6 +37,14 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
+
+
+@bot.event
+async def on_command_error(error, ctx):
+    if isinstance(error, CommandNotFound):
+        return
+    await bot.send_message(ctx.message.channel, f"Error: {error}")
+    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
 
 for cog in COGS:
