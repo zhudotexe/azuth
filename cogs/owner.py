@@ -34,8 +34,7 @@ class Owner:
             'channel': ctx.message.channel,
             'author': ctx.message.author,
             'server': ctx.message.server,
-            'message': ctx.message,
-            '_': self._last_result
+            'message': ctx.message
         }
 
         env.update(globals())
