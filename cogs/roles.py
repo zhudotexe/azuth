@@ -49,10 +49,9 @@ class Roles:
         msg_id = data['message_id']
         member = server.get_member(data['user_id'])
         emoji = self.get_emoji(**data.pop('emoji'))
-        chan_id = data['channel_id']
-        await self.handle_reaction(msg_id, member, emoji, server, chan_id)
+        await self.handle_reaction(msg_id, member, emoji, server)
 
-    async def handle_reaction(self, msg_id, member, emoji, server, chan_id):
+    async def handle_reaction(self, msg_id, member, emoji, server):
         if not msg_id == REACTION_MSG_ID:
             return
         elif member.id == '187421759484592128':
@@ -71,8 +70,6 @@ class Roles:
                     await self.bot.send_message(member, out)
                 except:
                     pass
-            else:
-                await self.bot.http.remove_reaction(msg_id, chan_id, emoji, member.id)
 
     def get_emoji(self, **data):
         id_ = data['id']
