@@ -7,6 +7,7 @@ from discord import Emoji
 
 REACTION_MSG_ID = '414216008614805505'
 REACTION_MSG_CHAN = '414215561967304710'
+MUTED_ROLES = ('HFSilenced', 'Silenced')
 
 
 class Roles:
@@ -52,10 +53,13 @@ class Roles:
         await self.handle_reaction(msg_id, member, emoji, server)
 
     async def handle_reaction(self, msg_id, member, emoji, server):
+        member_role_names = [r.name for r in member.roles]
         if not msg_id == REACTION_MSG_ID:
             return
         elif member.id == '187421759484592128':
             return
+        elif any(r in member_role_names for r in MUTED_ROLES):
+            return 
         else:
             if str(emoji) in self.reaction_map:
                 role = discord.utils.get(server.roles, name=self.reaction_map[str(emoji)])
