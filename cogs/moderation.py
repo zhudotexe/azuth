@@ -533,15 +533,27 @@ def get_default_settings(server):
 def parse_duration(dur):
     if not dur:
         raise Exception("No duration string given.")
-    match = re.match(r"(?:(\d+)m)?(?:(\d+)h)?(?:(\d+)d)?(?:(\d+)w)?(?:(\d+)mo)?(?:(\d+)y)?", dur)
-    if not match.group(0):
-        raise Exception("No duration found.")
-    minutes = int(match.group(1) or 0)
-    hours = int(match.group(2) or 0)
-    days = int(match.group(3) or 0)
-    weeks = int(match.group(4) or 0)
-    months = int(match.group(5) or 0)
-    years = int(match.group(6) or 0)
+    minutes = 0
+    hours = 0
+    days = 0
+    weeks = 0
+    months = 0
+    years = 0
+    for match in re.finditer(r"(\d+)(mo|h|d|w|m|y)", dur):
+        num = int(match.group(1))
+        unit = match.group(2)
+        if unit == 'm':
+            minutes += num
+        elif unit == 'h':
+            hours += num
+        elif unit == 'd':
+            days += num
+        elif unit == 'w':
+            weeks += num
+        elif unit == 'mo':
+            months += num
+        elif unit == 'y':
+            years += num
     days = days + (months * 30) + (years * 365)
     return datetime.timedelta(minutes=minutes, hours=hours, days=days, weeks=weeks)
 
