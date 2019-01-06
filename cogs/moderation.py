@@ -130,7 +130,7 @@ class Moderation:
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(manage_roles=True)
-    async def tempmute(self, ctx, target: discord.Member, *, duration, reason="Unknown reason"):
+    async def tempmute(self, ctx, target: discord.Member, duration, *, reason="Unknown reason"):
         """Temporarily mutes a member.
         Duration must be in format X[m/h/d/w/mo/y] (e.g. `15d38m`)."""
         role = discord.utils.get(ctx.message.server.roles, id=MUTED_ROLE)
