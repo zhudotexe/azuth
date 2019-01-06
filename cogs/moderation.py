@@ -80,7 +80,7 @@ class Moderation:
         if method not in ("kick", "ban", "lockdown"):
             return await self.bot.say("Raidmode method must be kick, ban, or lockdown.")
 
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['raidmode', 'locked_channels'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
 
         if server_settings['raidmode']:
             if server_settings['raidmode'] == 'lockdown':
@@ -101,7 +101,7 @@ class Moderation:
     async def mute(self, ctx, target: discord.Member, *, reason="Unknown reason"):
         """Toggles mute on a member."""
         role = discord.utils.get(ctx.message.server.roles, id=MUTED_ROLE)
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
 
         if role in target.roles:
             try:
@@ -134,7 +134,7 @@ class Moderation:
         """Temporarily mutes a member.
         Duration must be in format X[m/h/d/w/mo/y] (e.g. `15d38m`)."""
         role = discord.utils.get(ctx.message.server.roles, id=MUTED_ROLE)
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
         duration = parse_duration(duration)
         end = datetime.datetime.now() + duration
 
@@ -144,6 +144,7 @@ class Moderation:
         try:
             self.no_ban_logs.add(ctx.message.server.id)
             await self.bot.add_roles(target, role)
+            await asyncio.sleep(0.5)
         except Forbidden:
             return await self.bot.say("Error: The bot does not have `manage_roles` permission.")
         finally:
@@ -165,7 +166,7 @@ class Moderation:
         except Forbidden:
             return await self.bot.say('Error: The bot does not have `kick_members` permission.')
 
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
 
         case = Case.new(num=server_settings['casenum'], type_='kick', user=user.id, username=str(user), reason=reason,
                         mod=str(ctx.message.author))
@@ -183,7 +184,7 @@ class Moderation:
         finally:
             self.no_ban_logs.remove(ctx.message.server.id)
 
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
 
         case = Case.new(num=server_settings['casenum'], type_='ban', user=user.id, username=str(user), reason=reason,
                         mod=str(ctx.message.author))
@@ -197,12 +198,13 @@ class Moderation:
         try:
             self.no_ban_logs.add(ctx.message.server.id)
             await self.bot.ban(user)
+            await asyncio.sleep(0.5)
         except Forbidden:
             return await self.bot.say('Error: The bot does not have `ban_members` permission.')
         finally:
             self.no_ban_logs.remove(ctx.message.server.id)
 
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
         duration = parse_duration(duration)
         end = datetime.datetime.now() + duration
 
@@ -223,7 +225,7 @@ class Moderation:
 
         user_obj = await self.bot.get_user_info(user)
 
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum', 'forcebanned'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
         server_settings['forcebanned'].append(user)
 
         case = Case.new(num=server_settings['casenum'], type_='forceban', user=user, username=str(user_obj),
@@ -238,12 +240,13 @@ class Moderation:
             self.no_ban_logs.add(ctx.message.server.id)
             await self.bot.ban(user)
             await self.bot.unban(ctx.message.server, user)
+            await asyncio.sleep(0.5)
         except Forbidden:
             return await self.bot.say('Error: The bot does not have `ban_members` permission.')
         finally:
             self.no_ban_logs.remove(ctx.message.server.id)
 
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
 
         case = Case.new(num=server_settings['casenum'], type_='softban', user=user.id, username=str(user),
                         reason=reason, mod=str(ctx.message.author))
@@ -253,7 +256,7 @@ class Moderation:
     @checks.mod_or_permissions(kick_members=True)
     async def reason(self, ctx, case_num: int, *, reason):
         """Sets the reason for a post in mod-log."""
-        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases'])
+        server_settings = await self.get_server_settings(ctx.message.server.id)
         cases = server_settings['cases']
         case = next((c for c in cases if c['num'] == case_num), None)
         if case is None:
@@ -369,6 +372,7 @@ class Moderation:
             while not self.bot.is_closed:
                 now = datetime.datetime.now()
                 async for server in self.bot.mdb.mod.find({"pending_actions.time": {"$lte": now}}):
+                    print(f"Executing pending actions: {server['pending_actions']}")
                     for action in server['pending_actions']:
                         if action['time'] > now:
                             continue
@@ -394,7 +398,7 @@ class Moderation:
             return
         user = discord.Object(id=action['user'])
         await self.bot.unban(server, user)
-        case = Case.new(num=server_settings['casenum'], type_='unban', user=user, username=str(user),
+        case = Case.new(num=server_settings['casenum'], type_='unban', user=user.id, username=str(user.id),
                         reason=f"Time expired (case #{action['original_case']})", mod=str(self.bot.user))
         await self.post_action(server, server_settings, case, no_msg=True, no_commit=True)
 
@@ -461,7 +465,7 @@ class Moderation:
     async def on_member_ban(self, member):
         if member.server.id in self.no_ban_logs:
             return
-        server_settings = await self.get_server_settings(member.server.id, ['cases', 'casenum'])
+        server_settings = await self.get_server_settings(member.server.id)
 
         case = Case.new(num=server_settings['casenum'], type_='ban', user=member.id, username=str(member),
                         reason="Unknown reason")
@@ -470,7 +474,7 @@ class Moderation:
     async def on_member_unban(self, server, user):
         if server.id in self.no_ban_logs:
             return
-        server_settings = await self.get_server_settings(server.id, ['cases', 'casenum'])
+        server_settings = await self.get_server_settings(server.id)
 
         case = Case.new(num=server_settings['casenum'], type_='unban', user=user.id, username=str(user),
                         reason="Unknown reason")
@@ -481,12 +485,12 @@ class Moderation:
             return
         role = discord.utils.get(before.server.roles, id=MUTED_ROLE)
         if role not in before.roles and role in after.roles:  # just muted
-            server_settings = await self.get_server_settings(before.server.id, ['cases', 'casenum'])
+            server_settings = await self.get_server_settings(before.server.id)
             case = Case.new(num=server_settings['casenum'], type_='mute', user=after.id, username=str(after),
                             reason="Unknown reason")
             on_mute(server_settings, before)
         elif role in before.roles and role not in after.roles:  # just unmuted
-            server_settings = await self.get_server_settings(before.server.id, ['cases', 'casenum'])
+            server_settings = await self.get_server_settings(before.server.id)
             case = Case.new(num=server_settings['casenum'], type_='unmute', user=after.id, username=str(after),
                             reason="Unknown reason")
             on_unmute(server_settings, before)
@@ -495,8 +499,8 @@ class Moderation:
 
         await self.post_action(before.server, server_settings, case, no_msg=True)
 
-    async def get_server_settings(self, server_id, projection=None):
-        server_settings = await self.bot.mdb.mod.find_one({"server": server_id}, projection)
+    async def get_server_settings(self, server_id):
+        server_settings = await self.bot.mdb.mod.find_one({"server": server_id})
         if server_settings is None:
             server_settings = get_default_settings(server_id)
         else:
