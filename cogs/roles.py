@@ -59,7 +59,7 @@ class Roles:
         elif member.id == '187421759484592128':
             return
         elif any(r in member_role_names for r in MUTED_ROLES):
-            return 
+            return
         else:
             if str(emoji) in self.reaction_map:
                 role = discord.utils.get(server.roles, name=self.reaction_map[str(emoji)])

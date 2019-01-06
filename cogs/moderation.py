@@ -1,3 +1,7 @@
+import asyncio
+import datetime
+import re
+
 import discord
 from discord import Forbidden
 from discord.ext import commands
@@ -12,6 +16,7 @@ class Moderation:
     def __init__(self, bot):
         self.bot = bot
         self.no_ban_logs = set()
+        bot.loop.create_task(self.check_pending())
 
     @commands.command(hidden=True, pass_context=True, no_pm=True)
     @checks.mod_or_permissions(manage_messages=True)
@@ -108,6 +113,7 @@ class Moderation:
                 self.no_ban_logs.remove(ctx.message.server.id)
             case = Case.new(num=server_settings['casenum'], type_='unmute', user=target.id, username=str(target),
                             reason=reason, mod=str(ctx.message.author))
+            on_unmute(server_settings, target)
         else:
             try:
                 self.no_ban_logs.add(ctx.message.server.id)
@@ -118,6 +124,35 @@ class Moderation:
                 self.no_ban_logs.remove(ctx.message.server.id)
             case = Case.new(num=server_settings['casenum'], type_='mute', user=target.id, username=str(target),
                             reason=reason, mod=str(ctx.message.author))
+            on_mute(server_settings, target)
+
+        await self.post_action(ctx.message.server, server_settings, case)
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(manage_roles=True)
+    async def tempmute(self, ctx, target: discord.Member, *, duration, reason="Unknown reason"):
+        """Temporarily mutes a member.
+        Duration must be in format X[m/h/d/w/mo/y] (e.g. `15d38m`)."""
+        role = discord.utils.get(ctx.message.server.roles, id=MUTED_ROLE)
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+        duration = parse_duration(duration)
+        end = datetime.datetime.now() + duration
+
+        if role in target.roles:
+            return await self.bot.say("Member is already muted.")
+
+        try:
+            self.no_ban_logs.add(ctx.message.server.id)
+            await self.bot.add_roles(target, role)
+        except Forbidden:
+            return await self.bot.say("Error: The bot does not have `manage_roles` permission.")
+        finally:
+            self.no_ban_logs.remove(ctx.message.server.id)
+        case = Case.new(num=server_settings['casenum'], type_='tempmute', user=target.id, username=str(target),
+                        reason=f"{reason} [{str(duration)}]", mod=str(ctx.message.author))
+        on_mute(server_settings, target)
+        server_settings['pending_actions'].append(
+            {"user": target.id, "action": "unmute", "original_case": case.num, "time": end})
 
         await self.post_action(ctx.message.server, server_settings, case)
 
@@ -152,6 +187,30 @@ class Moderation:
 
         case = Case.new(num=server_settings['casenum'], type_='ban', user=user.id, username=str(user), reason=reason,
                         mod=str(ctx.message.author))
+        await self.post_action(ctx.message.server, server_settings, case)
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(ban_members=True)
+    async def tempban(self, ctx, user: discord.Member, duration, *, reason='Unknown reason'):
+        """Tempbans a member and logs it to #mod-log.
+        Duration must be in format X[m/h/d/w/mo/y] (e.g. `15d38m`)."""
+        try:
+            self.no_ban_logs.add(ctx.message.server.id)
+            await self.bot.ban(user)
+        except Forbidden:
+            return await self.bot.say('Error: The bot does not have `ban_members` permission.')
+        finally:
+            self.no_ban_logs.remove(ctx.message.server.id)
+
+        server_settings = await self.get_server_settings(ctx.message.server.id, ['cases', 'casenum'])
+        duration = parse_duration(duration)
+        end = datetime.datetime.now() + duration
+
+        case = Case.new(num=server_settings['casenum'], type_='tempban', user=user.id, username=str(user),
+                        reason=f"{reason} [{str(duration)}]", mod=str(ctx.message.author))
+        server_settings['pending_actions'].append(
+            {"user": user.id, "action": "unban", "original_case": case.num, "time": end})
+
         await self.post_action(ctx.message.server, server_settings, case)
 
     @commands.command(hidden=True, pass_context=True)
@@ -212,7 +271,7 @@ class Moderation:
         await self.set_server_settings(ctx.message.server.id, server_settings)
         await self.bot.say(':ok_hand:')
 
-    async def post_action(self, server, server_settings, case, no_msg=False):
+    async def post_action(self, server, server_settings, case, no_msg=False, no_commit=False):
         """Common function after a moderative action."""
         server_settings['casenum'] += 1
         mod_log = discord.utils.get(server.channels, name='mod-log')
@@ -222,7 +281,8 @@ class Moderation:
             case.log_msg = msg.id
 
         server_settings['cases'].append(case.to_dict())
-        await self.set_server_settings(server.id, server_settings)
+        if not no_commit:
+            await self.set_server_settings(server.id, server_settings)
         if not no_msg:
             await self.bot.say(':ok_hand:')
 
@@ -287,6 +347,72 @@ class Moderation:
                             reason="User forcebanned previously", mod=str(self.bot.user))
             await self.post_action(member.server, server_settings, case, no_msg=True)
 
+    async def check_mutes(self, server_settings, member):
+        """Checks whether a newly-joined member should be muted due to previous mutes."""
+        if member.id in server_settings['muted']:
+            try:
+                self.no_ban_logs.add(member.server.id)
+                role = discord.utils.get(member.server.roles, id=MUTED_ROLE)
+                await self.bot.add_roles(member, role)
+            except Forbidden:
+                return
+            finally:
+                self.no_ban_logs.remove(member.server.id)
+            case = Case.new(num=server_settings['casenum'], type_='mute', user=member.id, username=str(member),
+                            reason="User attempted to evade mute", mod=str(self.bot.user))
+            await self.post_action(member.server, server_settings, case, no_msg=True)
+
+    async def check_pending(self):
+        """Checks for pending actions and executes them if the time is right."""
+        try:
+            await self.bot.wait_until_ready()
+            while not self.bot.is_closed:
+                now = datetime.datetime.now()
+                async for server in self.bot.mdb.mod.find({"pending_actions.time": {"$lte": now}}):
+                    for action in server['pending_actions']:
+                        if action['time'] > now:
+                            continue
+                        try:
+                            self.no_ban_logs.add(server['server'])
+                            if action['action'] == 'unban':
+                                await self.handle_unban(server, action)
+                            elif action['action'] == 'unmute':
+                                await self.handle_unmute(server, action)
+                        except:
+                            continue
+                        finally:
+                            self.no_ban_logs.remove(server['server'])
+                    server['pending_actions'] = [a for a in server['pending_actions'] if a['time'] > now]
+                    await self.set_server_settings(server['server'], server)
+                await asyncio.sleep(60)  # every minute
+        except asyncio.CancelledError:
+            pass
+
+    async def handle_unban(self, server_settings, action):
+        server = self.bot.get_server(server_settings['server'])
+        if not server:
+            return
+        user = discord.Object(id=action['user'])
+        await self.bot.unban(server, user)
+        case = Case.new(num=server_settings['casenum'], type_='unban', user=user, username=str(user),
+                        reason=f"Time expired (case #{action['original_case']})", mod=str(self.bot.user))
+        await self.post_action(server, server_settings, case, no_msg=True, no_commit=True)
+
+    async def handle_unmute(self, server_settings, action):
+        server = self.bot.get_server(server_settings['server'])
+        if not server:
+            return
+        target = server.get_member(action['user'])
+        if not target:
+            return
+        role = discord.utils.get(server.roles, id=MUTED_ROLE)
+        if role in target.roles:
+            await self.bot.remove_roles(target, role)
+            case = Case.new(num=server_settings['casenum'], type_='unmute', user=target.id, username=str(target),
+                            reason=f"Time expired (case #{action['original_case']})", mod=str(self.bot.user))
+            on_unmute(server_settings, target)
+            await self.post_action(server, server_settings, case, no_msg=True, no_commit=True)
+
     async def on_message_delete(self, message):
         if not message.server:
             return  # PMs
@@ -330,6 +456,7 @@ class Moderation:
         server_settings = await self.get_server_settings(member.server.id)
         await self.check_raidmode(server_settings, member)
         await self.check_forceban(server_settings, member)
+        await self.check_mutes(server_settings, member)
 
     async def on_member_ban(self, member):
         if member.server.id in self.no_ban_logs:
@@ -357,10 +484,12 @@ class Moderation:
             server_settings = await self.get_server_settings(before.server.id, ['cases', 'casenum'])
             case = Case.new(num=server_settings['casenum'], type_='mute', user=after.id, username=str(after),
                             reason="Unknown reason")
+            on_mute(server_settings, before)
         elif role in before.roles and role not in after.roles:  # just unmuted
             server_settings = await self.get_server_settings(before.server.id, ['cases', 'casenum'])
             case = Case.new(num=server_settings['casenum'], type_='unmute', user=after.id, username=str(after),
                             reason="Unknown reason")
+            on_unmute(server_settings, before)
         else:
             return
 
@@ -370,6 +499,11 @@ class Moderation:
         server_settings = await self.bot.mdb.mod.find_one({"server": server_id}, projection)
         if server_settings is None:
             server_settings = get_default_settings(server_id)
+        else:
+            default = get_default_settings(None)
+            for key in default:
+                if key not in server_settings:
+                    server_settings[key] = default[key]
         return server_settings
 
     async def set_server_settings(self, server_id, settings):
@@ -386,8 +520,36 @@ def get_default_settings(server):
         "cases": [],
         "casenum": 1,
         "forcebanned": [],
-        "locked_channels": []
+        "locked_channels": [],
+        "muted": [],
+        "pending_actions": []
     }
+
+
+def parse_duration(dur):
+    if not dur:
+        raise Exception("No duration string given.")
+    match = re.match(r"(?:(\d+)m)?(?:(\d+)h)?(?:(\d+)d)?(?:(\d+)w)?(?:(\d+)mo)?(?:(\d+)y)?", dur)
+    if not match.group(0):
+        raise Exception("No duration found.")
+    minutes = int(match.group(1) or 0)
+    hours = int(match.group(2) or 0)
+    days = int(match.group(3) or 0)
+    weeks = int(match.group(4) or 0)
+    months = int(match.group(5) or 0)
+    years = int(match.group(6) or 0)
+    days = days + (months * 30) + (years * 365)
+    return datetime.timedelta(minutes=minutes, hours=hours, days=days, weeks=weeks)
+
+
+def on_mute(server_settings, member):
+    if member.id not in server_settings['muted']:
+        server_settings['muted'].append(member.id)
+
+
+def on_unmute(server_settings, member):
+    if member.id in server_settings['muted']:
+        server_settings['muted'].remove(member.id)
 
 
 class Case:
