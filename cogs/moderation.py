@@ -106,9 +106,10 @@ class Moderation:
             out = f"{target.mention} has {len(previous_warnings)} previous warning(s)!\n"
             for warn in previous_warnings:
                 try:
-                    case = Case.from_id(ctx, warn['case'])
+                    case = Case.from_id(server_settings, warn['case'])
                 except:
                     out += f"Case {warn['case']} (not found)\n"
+                    continue
                 out += f"Case {warn['case']} - {case.reason}\n"
             await self.bot.say(out)
 
