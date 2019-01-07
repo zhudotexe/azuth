@@ -98,6 +98,27 @@ class Moderation:
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(manage_roles=True)
+    async def warn(self, ctx, target: discord.Member, *, reason="Unknown reason"):
+        """Warns a member (for moderator reference)."""
+        server_settings = await self.get_server_settings(ctx.message.server.id)
+        previous_warnings = [w for w in server_settings['warnings'] if w['user'] == target.id]
+        if previous_warnings:
+            out = f"{target.mention} has {len(previous_warnings)} previous warning(s)!\n"
+            for warn in previous_warnings:
+                try:
+                    case = Case.from_id(ctx, warn['case'])
+                except:
+                    out += f"Case {warn['case']} (not found)\n"
+                out += f"Case {warn['case']} - {case.reason}\n"
+            await self.bot.say(out)
+
+        case = Case.new(num=server_settings['casenum'], type_='warn', user=target.id, username=str(target),
+                        reason=reason, mod=str(ctx.message.author))
+        server_settings['warnings'].append({'user': target.id, 'case': case.num})
+        await self.post_action(ctx.message.server, server_settings, case)
+
+    @commands.command(hidden=True, pass_context=True)
+    @checks.mod_or_permissions(manage_roles=True)
     async def mute(self, ctx, target: discord.Member, *, reason="Unknown reason"):
         """Toggles mute on a member."""
         role = discord.utils.get(ctx.message.server.roles, id=MUTED_ROLE)
@@ -526,7 +547,8 @@ def get_default_settings(server):
         "forcebanned": [],
         "locked_channels": [],
         "muted": [],
-        "pending_actions": []
+        "pending_actions": [],
+        "warnings": []
     }
 
 
@@ -586,6 +608,13 @@ class Case:
     def from_dict(cls, raw):
         raw['type_'] = raw.pop('type')
         return cls(**raw)
+
+    @classmethod
+    def from_id(cls, server_settings, num):
+        raw = next((c for c in server_settings['cases'] if c['num'] == num), None)
+        if not raw:
+            raise Exception("Case not found.")
+        return cls.from_dict(raw)
 
     def to_dict(self):
         return {"num": self.num, "type": self.type, "user": self.user, "reason": self.reason, "mod": self.mod,
