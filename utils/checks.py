@@ -52,8 +52,8 @@ def role_or_permissions(ctx, check, **perms):
 
 def mod_or_permissions(**perms):
     def predicate(ctx):
-        mod_role = "Bot Mod".lower()
-        admin_role = "Bot Admin".lower()
+        mod_role = "Moderator".lower()
+        admin_role = "Admin".lower()
         return role_or_permissions(ctx, lambda r: r.name.lower() in (mod_role, admin_role), **perms)
 
     return commands.check(predicate)
@@ -61,7 +61,7 @@ def mod_or_permissions(**perms):
 
 def admin_or_permissions(**perms):
     def predicate(ctx):
-        admin_role = "Bot Admin".lower()
+        admin_role = "Admin".lower()
         return role_or_permissions(ctx, lambda r: r.name.lower() == admin_role.lower(), **perms)
 
     return commands.check(predicate)

@@ -96,8 +96,8 @@ class Moderation:
         await self.set_server_settings(ctx.message.server.id, server_settings)
         await self.bot.say(out)
 
-    @commands.command(hidden=True, pass_context=True)
-    @checks.mod_or_permissions(manage_roles=True)
+    @commands.group(hidden=True, pass_context=True, invoke_without_command=True, aliases=['warning'])
+    @checks.mod_or_permissions(manage_messages=True)
     async def warn(self, ctx, target: discord.Member, *, reason="Unknown reason"):
         """Warns a member (for moderator reference)."""
         server_settings = await self.get_server_settings(ctx.message.server.id)
@@ -117,6 +117,22 @@ class Moderation:
                         reason=reason, mod=str(ctx.message.author))
         server_settings['warnings'].append({'user': target.id, 'case': case.num})
         await self.post_action(ctx.message.server, server_settings, case)
+
+    @warn.command(hidden=True, pass_context=True, invoke_without_command=True, name='list')
+    @checks.mod_or_permissions(manage_messages=True)
+    async def warn_list(self, ctx, target: discord.Member):
+        """Finds a list of a user's previous warnings."""
+        server_settings = await self.get_server_settings(ctx.message.server.id)
+        previous_warnings = [w for w in server_settings['warnings'] if w['user'] == target.id]
+        out = f"{target.mention} has {len(previous_warnings)} previous warning(s).\n"
+        for warn in previous_warnings:
+            try:
+                case = Case.from_id(server_settings, warn['case'])
+            except:
+                out += f"Case {warn['case']} (not found)\n"
+                continue
+            out += f"Case {warn['case']} - {case.reason}\n"
+        await self.bot.say(out)
 
     @commands.command(hidden=True, pass_context=True)
     @checks.mod_or_permissions(manage_roles=True)
