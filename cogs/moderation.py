@@ -102,8 +102,9 @@ class Moderation:
         """Warns a member (for moderator reference)."""
         server_settings = await self.get_server_settings(ctx.message.server.id)
         previous_warnings = [w for w in server_settings['warnings'] if w['user'] == target.id]
+        out = "Warning logged.\n"
         if previous_warnings:
-            out = f"{target.mention} has {len(previous_warnings)} previous warning(s)!\n"
+            out += f"{target.mention} has {len(previous_warnings)} previous warning(s)!\n"
             for warn in previous_warnings:
                 try:
                     case = Case.from_id(server_settings, warn['case'])
@@ -111,12 +112,11 @@ class Moderation:
                     out += f"Case {warn['case']} (not found)\n"
                     continue
                 out += f"Case {warn['case']} - {case.reason}\n"
-            await self.bot.say(out)
 
         case = Case.new(num=server_settings['casenum'], type_='warn', user=target.id, username=str(target),
                         reason=reason, mod=str(ctx.message.author))
         server_settings['warnings'].append({'user': target.id, 'case': case.num})
-        await self.post_action(ctx.message.server, server_settings, case)
+        await self.post_action(ctx.message.server, server_settings, case, msg=out)
 
     @warn.command(hidden=True, pass_context=True, invoke_without_command=True, name='list')
     @checks.mod_or_permissions(manage_messages=True)
@@ -312,7 +312,7 @@ class Moderation:
         await self.set_server_settings(ctx.message.server.id, server_settings)
         await self.bot.say(':ok_hand:')
 
-    async def post_action(self, server, server_settings, case, no_msg=False, no_commit=False):
+    async def post_action(self, server, server_settings, case, no_msg=False, no_commit=False, msg=None):
         """Common function after a moderative action."""
         server_settings['casenum'] += 1
         mod_log = discord.utils.get(server.channels, name='mod-log')
@@ -325,7 +325,7 @@ class Moderation:
         if not no_commit:
             await self.set_server_settings(server.id, server_settings)
         if not no_msg:
-            await self.bot.say(':ok_hand:')
+            await self.bot.say(msg or ':ok_hand:')
 
     async def start_lockdown(self, ctx, server_settings):
         """Disables Send Messages permission for everyone in every channel."""
