@@ -102,7 +102,7 @@ class Moderation:
         """Warns a member (for moderator reference)."""
         server_settings = await self.get_server_settings(ctx.message.server.id)
         previous_warnings = [w for w in server_settings['warnings'] if w['user'] == target.id]
-        out = "Warning logged.\n"
+        out = "Warning logged. Further infractions may lead to a temporary to permanent ban.\n"
         if previous_warnings:
             out += f"{target.mention} has {len(previous_warnings)} previous warning(s)!\n"
             for warn in previous_warnings:
@@ -318,8 +318,8 @@ class Moderation:
         mod_log = discord.utils.get(server.channels, name='mod-log')
 
         if mod_log is not None:
-            msg = await self.bot.send_message(mod_log, str(case))
-            case.log_msg = msg.id
+            log_msg = await self.bot.send_message(mod_log, str(case))
+            case.log_msg = log_msg.id
 
         server_settings['cases'].append(case.to_dict())
         if not no_commit:
