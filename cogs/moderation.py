@@ -102,16 +102,20 @@ class Moderation:
         """Warns a member (for moderator reference)."""
         server_settings = await self.get_server_settings(ctx.message.server.id)
         previous_warnings = [w for w in server_settings['warnings'] if w['user'] == target.id]
+        previous_actions = [a for a in server_settings['cases'] if a['user'] == target.id and a['type'] != 'warn']
         out = "Warning logged. Further infractions may lead to a temporary to permanent ban.\n"
-        if previous_warnings:
-            out += f"{target.mention} has {len(previous_warnings)} previous warning(s)!\n"
+        if previous_warnings or previous_actions:
+            out += f"{target.mention} has {len(previous_warnings) + len(previous_actions)} previous action(s)!\n"
             for warn in previous_warnings:
                 try:
                     case = Case.from_id(server_settings, warn['case'])
                 except:
-                    out += f"Case {warn['case']} (not found)\n"
+                    out += f"[warn] Case {warn['case']} (not found)\n"
                     continue
-                out += f"Case {warn['case']} - {case.reason}\n"
+                out += f"[warn] Case {warn['case']} - {case.reason}\n"
+            for action in previous_actions:
+                case = Case.from_dict(action)
+                out += f"[{case.type}] Case {case.num} - {case.reason}\n"
 
         case = Case.new(num=server_settings['casenum'], type_='warn', user=target.id, username=str(target),
                         reason=reason, mod=str(ctx.message.author))
@@ -124,14 +128,18 @@ class Moderation:
         """Finds a list of a user's previous warnings."""
         server_settings = await self.get_server_settings(ctx.message.server.id)
         previous_warnings = [w for w in server_settings['warnings'] if w['user'] == target.id]
-        out = f"{target.mention} has {len(previous_warnings)} previous warning(s).\n"
+        previous_actions = [a for a in server_settings['cases'] if a['user'] == target.id and a['type'] != 'warn']
+        out = f"{target.mention} has {len(previous_warnings)} previous action(s).\n"
         for warn in previous_warnings:
             try:
                 case = Case.from_id(server_settings, warn['case'])
             except:
-                out += f"Case {warn['case']} (not found)\n"
+                out += f"[warn] Case {warn['case']} (not found)\n"
                 continue
-            out += f"Case {warn['case']} - {case.reason}\n"
+            out += f"[warn] Case {warn['case']} - {case.reason}\n"
+        for action in previous_actions:
+            case = Case.from_dict(action)
+            out += f"[{case.type}] Case {case.num} - {case.reason}\n"
         await self.bot.say(out)
 
     @commands.command(hidden=True, pass_context=True)
