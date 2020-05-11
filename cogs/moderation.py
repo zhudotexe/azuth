@@ -10,6 +10,8 @@ from discord.http import Route
 from utils import checks
 
 MUTED_ROLE = "316134780976758786"
+MESSAGE_LOG_CHANNEL_ID = "468251139691773972"
+MOD_LOG_CHANNEL_ID = "283404995951460363"
 
 
 class Moderation:
@@ -312,7 +314,7 @@ class Moderation:
         case.reason = reason
         case.mod = str(ctx.message.author)
 
-        mod_log = discord.utils.get(ctx.message.server.channels, name='mod-log')
+        mod_log = discord.utils.get(ctx.message.server.channels, id=MOD_LOG_CHANNEL_ID)
         if mod_log is not None and case.log_msg:
             log_message = await self.bot.get_message(mod_log, case.log_msg)
             await self.bot.edit_message(log_message, str(case))
@@ -323,7 +325,7 @@ class Moderation:
     async def post_action(self, server, server_settings, case, no_msg=False, no_commit=False, msg=None):
         """Common function after a moderative action."""
         server_settings['casenum'] += 1
-        mod_log = discord.utils.get(server.channels, name='mod-log')
+        mod_log = discord.utils.get(server.channels, id=MOD_LOG_CHANNEL_ID)
 
         if mod_log is not None:
             log_msg = await self.bot.send_message(mod_log, str(case))
@@ -466,7 +468,7 @@ class Moderation:
     async def on_message_delete(self, message):
         if not message.server:
             return  # PMs
-        msg_log = discord.utils.get(message.server.channels, name="message-log")
+        msg_log = discord.utils.get(message.server.channels, id=MESSAGE_LOG_CHANNEL_ID)
         if not msg_log:
             return
         embed = discord.Embed()
@@ -483,7 +485,7 @@ class Moderation:
     async def on_message_edit(self, before, after):
         if not before.server:
             return  # PMs
-        msg_log = discord.utils.get(before.server.channels, name="message-log")
+        msg_log = discord.utils.get(before.server.channels, id=MESSAGE_LOG_CHANNEL_ID)
         if not msg_log:
             return
         if before.content == after.content:
