@@ -130,7 +130,7 @@ class Moderation:
         """Finds a list of a user's previous warnings."""
         server_settings = await self.get_server_settings(ctx.message.server.id)
         previous_warnings = [w for w in server_settings['warnings'] if w['user'] == target.id]
-        previous_actions = [a for a in server_settings['cases'] if a['user'] == target.id and a['type'] != 'warn']
+        previous_actions = [a for a in server_settings['cases'] if a['user'] == target.id and a.get('type') != 'warn']
         out = f"{target.mention} has {len(previous_warnings)} previous action(s).\n"
         for warn in previous_warnings:
             try:
@@ -633,7 +633,10 @@ class Case:
 
     @classmethod
     def from_dict(cls, raw):
-        raw['type_'] = raw.pop('type')
+        if 'type' in raw:
+            raw['type_'] = raw.pop('type')
+        else:
+            raw['type_'] = 'unknown'
         return cls(**raw)
 
     @classmethod
