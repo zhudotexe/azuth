@@ -104,7 +104,7 @@ class Moderation:
         """Warns a member (for moderator reference)."""
         server_settings = await self.get_server_settings(ctx.message.server.id)
         previous_warnings = [w for w in server_settings['warnings'] if w['user'] == target.id]
-        previous_actions = [a for a in server_settings['cases'] if a['user'] == target.id and a['type'] != 'warn']
+        previous_actions = [a for a in server_settings['cases'] if a['user'] == target.id and a.get('type') != 'warn']
         out = "Warning logged. Further infractions may lead to a temporary to permanent ban.\n"
         if previous_warnings or previous_actions:
             out += f"{target.mention} has {len(previous_warnings) + len(previous_actions)} previous action(s)!\n"
